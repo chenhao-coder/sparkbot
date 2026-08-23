@@ -18,6 +18,7 @@
 #include "esp_wifi.h"
 #include "esp_http_client.h"
 #include "esp_crt_bundle.h"
+#include "esp_sparkbot_bsp.h"
 #include "ui.h"
 #include "lvgl.h"
 
@@ -106,6 +107,10 @@ static void http_get_task(void *pvParameters)
         if (result != NULL) {
             int fans = cJSON_parse_follower(result);
             ESP_LOGI(TAG, ">>> B站粉丝数: %d <<<", fans);
+            if (bsp_display_lock(0)) {
+                lv_label_set_text_fmt(ui_LabelFansCount, "祝贺您获得 %d 粉丝", fans);
+                bsp_display_unlock();
+            }
             if (fans > g_fans_prvs) {
                 ESP_LOGI(TAG, "!!! 粉丝涨了！从 %d → %d !!!", g_fans_prvs, fans);
             }
