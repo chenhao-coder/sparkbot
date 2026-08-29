@@ -6,6 +6,7 @@
 #include "audio.h"
 #include "opus_audio.h"
 #include "yay_wav.h"
+#include "wifi.h"
 
 static const char *TAG = "MAIN";
 
@@ -30,4 +31,5 @@ void app_main(void)
 
     /* 临时测试: 播放 yay.wav 验证喇叭通路 */
     oai_play_test_audio();
+    oai_wifi();
 }
