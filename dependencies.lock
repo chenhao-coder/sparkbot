@@ -23,6 +23,16 @@ dependencies:
       registry_url: https://components.espressif.com
       type: service
     version: 4.2.0
+  espressif/cjson:
+    component_hash: e788323270d90738662d66fffa910bfe1fba019bba087f01557e70c40485b469
+    dependencies:
+    - name: idf
+      require: private
+      version: '>=5.0'
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 1.7.19~2
   espressif/cmake_utilities:
     component_hash: 351350613ceafba240b761b4ea991e0f231ac7a9f59a9ee901f751bddc0bb18f
     dependencies:
@@ -53,6 +63,13 @@ dependencies:
       registry_url: https://components.espressif.com
       type: service
     version: 1.2.1
+  espressif/esp_libsrtp:
+    component_hash: 131560184c73ec09f77d8904a2db709307803f0f9f111898921b6966776eac15
+    dependencies: []
+    source:
+      registry_url: https://components.espressif.com
+      type: service
+    version: 1.0.0
   espressif/esp_lv_decoder:
     component_hash: 331d23c304cea5d1aed0ad3cea7774874dbaeebb2217e8db6bf3cc8485ac9f9f
     dependencies:
@@ -180,6 +197,27 @@ dependencies:
     - esp32c61
     - esp32h4
     version: 1.0.2
+  espressif/esp_peer:
+    component_hash: 36c98e3420dad4675bbe13431bf4deefd0ba2b82f71dda458cb5471825d053b4
+    dependencies:
+    - name: espressif/esp_libsrtp
+      registry_url: https://components.espressif.com
+      require: private
+      version: ^1.0.0
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 1.5.4
+  espressif/esp_websocket_client:
+    component_hash: dc00233af846f3a744ada283a300e0d586040aadc3ee67361645ecdce4523672
+    dependencies:
+    - name: idf
+      require: private
+      version: '>=5.0'
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 1.8.0
   espressif/freetype:
     component_hash: aa9f7657a69b2b1c1f49044017fc424081d4e0fe6e97834cb43883548d44e3ca
     dependencies:
@@ -241,9 +279,12 @@ dependencies:
     version: 9.5.0
 direct_dependencies:
 - 78/esp-opus
+- espressif/cjson
 - espressif/esp_codec_dev
 - espressif/esp_lvgl_adapter
+- espressif/esp_peer
+- espressif/esp_websocket_client
 - idf
-manifest_hash: c0b3d2d622d968421f1e950e67695b430dff22cc8d868b575b7f27eff95c30ab
+manifest_hash: 3424b810bd93ff9a321f3921e1bd05e5305989ea83092e36ce154af0523723a2
 target: esp32s3
 version: 3.0.0

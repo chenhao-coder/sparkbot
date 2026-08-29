@@ -1,17 +1,24 @@
 #pragma once
 
+#include "esp_err.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-/* Audio sample rate used by the whole voice pipeline (capture + playback) */
-#define OAI_SAMPLE_RATE 16000
+/*
+ * ES8311 capture and playback share one I2S clock.  The Doubao full-duplex
+ * endpoint returns 24 kHz PCM, so the codec runs at 24 kHz in both directions.
+ * Microphone audio is resampled to 16 kHz before it is sent to Doubao.
+ */
+#define AUDIO_CODEC_SAMPLE_RATE 24000
+#define DOUBAO_INPUT_SAMPLE_RATE 16000
 
 /*
  * Initialize ES8311 codec (I2C) + I2S (new IDF 6 driver) via esp_codec_dev.
  * Configures both capture (mic) and playback (speaker).
  */
-void oai_init_audio_capture(void);
+esp_err_t oai_init_audio_capture(void);
 
 /*
  * Read captured audio samples (blocking until `len` bytes are filled).

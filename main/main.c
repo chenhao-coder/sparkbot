@@ -1,22 +1,20 @@
-#include <stdio.h>
 #include <esp_event.h>
+#include <stdio.h>
+
+#include "audio.h"
+#include "doubao_realtime.h"
 #include "esp_log.h"
 #include "nvs_flash.h"
 #include "ui.h"
-#include "audio.h"
-#include "opus_audio.h"
-#include "yay_wav.h"
 #include "wifi.h"
 
 static const char *TAG = "MAIN";
 
-void app_main(void)
-{
+void app_main(void) {
     ESP_LOGI(TAG, "app_main 启动");
 
     esp_err_t ret = nvs_flash_init();
-    if (ret == ESP_ERR_NVS_NO_FREE_PAGES ||
-        ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
         ESP_ERROR_CHECK(nvs_flash_erase());
         ret = nvs_flash_init();
     }
@@ -26,10 +24,15 @@ void app_main(void)
 
     app_ui_start();
 
-    oai_init_audio_capture();
-    oai_init_audio_decoder();
-
-    /* 临时测试: 播放 yay.wav 验证喇叭通路 */
-    oai_play_test_audio();
+    ret = oai_init_audio_capture();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "音频初始化失败，停止启动实时语音: %s", esp_err_to_name(ret));
+        return;
+    }
     oai_wifi();
+
+    ret = doubao_realtime_start();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "豆包实时语音启动失败: %s", esp_err_to_name(ret));
+    }
 }

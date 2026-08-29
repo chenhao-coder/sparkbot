@@ -1,0 +1,10 @@
+# Required by espressif/esp_peer for WebRTC DTLS-SRTP.
+CONFIG_MBEDTLS_SSL_PROTO_DTLS=y
+CONFIG_MBEDTLS_SSL_DTLS_SRTP=y
+
+# Required by esp_peer's self-signed certificate generation on ESP-IDF 6.x.
+CONFIG_MBEDTLS_X509_CREATE_C=y
+
+# Doubao's HTTP Upgrade response can exceed ESP-IDF's 1 KiB default.
+CONFIG_WS_BUFFER_SIZE=8192
+CONFIG_WS_DYNAMIC_BUFFER=y

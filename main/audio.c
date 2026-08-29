@@ -69,7 +69,7 @@ static esp_err_t detect_es8311(uint8_t *codec_addr)
     return ESP_ERR_NOT_FOUND;
 }
 
-void oai_init_audio_capture(void)
+esp_err_t oai_init_audio_capture(void)
 {
     esp_err_t ret;
     uint8_t codec_i2c_addr = 0;
@@ -86,10 +86,11 @@ void oai_init_audio_capture(void)
     ret = i2c_new_master_bus(&i2c_bus_cfg, &s_i2c_bus);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "i2c_new_master_bus failed: %s", esp_err_to_name(ret));
-        return;
+        return ret;
     }
-    if (detect_es8311(&codec_i2c_addr) != ESP_OK) {
-        return;
+    ret = detect_es8311(&codec_i2c_addr);
+    if (ret != ESP_OK) {
+        return ret;
     }
 
     /* 2. I2S channel (TX playback + RX capture), ESP32 as master */
@@ -98,11 +99,11 @@ void oai_init_audio_capture(void)
     ret = i2s_new_channel(&chan_cfg, &s_tx_chan, &s_rx_chan);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "i2s_new_channel failed: %s", esp_err_to_name(ret));
-        return;
+        return ret;
     }
 
     i2s_std_config_t std_cfg = {
-        .clk_cfg  = I2S_STD_CLK_DEFAULT_CONFIG(OAI_SAMPLE_RATE),
+        .clk_cfg  = I2S_STD_CLK_DEFAULT_CONFIG(AUDIO_CODEC_SAMPLE_RATE),
         .slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_MONO),
         .gpio_cfg = {
             .mclk = MCLK_PIN,
@@ -122,23 +123,23 @@ void oai_init_audio_capture(void)
     ret = i2s_channel_init_std_mode(s_tx_chan, &std_cfg);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "i2s_channel_init_std_mode(tx) failed: %s", esp_err_to_name(ret));
-        return;
+        return ret;
     }
     ret = i2s_channel_init_std_mode(s_rx_chan, &std_cfg);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "i2s_channel_init_std_mode(rx) failed: %s", esp_err_to_name(ret));
-        return;
+        return ret;
     }
     /* TX drives the shared clock in full-duplex mode */
     ret = i2s_channel_enable(s_tx_chan);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "i2s_channel_enable(tx) failed: %s", esp_err_to_name(ret));
-        return;
+        return ret;
     }
     ret = i2s_channel_enable(s_rx_chan);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "i2s_channel_enable(rx) failed: %s", esp_err_to_name(ret));
-        return;
+        return ret;
     }
 
     /* 3. I2S data interface for esp_codec_dev */
@@ -149,7 +150,7 @@ void oai_init_audio_capture(void)
     const audio_codec_data_if_t *data_if = audio_codec_new_i2s_data(&i2s_cfg);
     if (data_if == NULL) {
         ESP_LOGE(TAG, "audio_codec_new_i2s_data failed");
-        return;
+        return ESP_ERR_NO_MEM;
     }
 
     /* 4. I2C control interface */
@@ -161,14 +162,14 @@ void oai_init_audio_capture(void)
     const audio_codec_ctrl_if_t *ctrl_if = audio_codec_new_i2c_ctrl(&i2c_ctrl_cfg);
     if (ctrl_if == NULL) {
         ESP_LOGE(TAG, "audio_codec_new_i2c_ctrl failed");
-        return;
+        return ESP_ERR_NO_MEM;
     }
 
     /* 5. GPIO interface (PA enable etc.) */
     const audio_codec_gpio_if_t *gpio_if = audio_codec_new_gpio();
     if (gpio_if == NULL) {
         ESP_LOGE(TAG, "audio_codec_new_gpio failed");
-        return;
+        return ESP_ERR_NO_MEM;
     }
 
     /* 6. ES8311 codec interface (input + output) */
@@ -192,7 +193,7 @@ void oai_init_audio_capture(void)
     const audio_codec_if_t *codec_if = es8311_codec_new(&es8311_cfg);
     if (codec_if == NULL) {
         ESP_LOGE(TAG, "es8311_codec_new failed");
-        return;
+        return ESP_FAIL;
     }
 
     /* 7. Codec device */
@@ -204,26 +205,28 @@ void oai_init_audio_capture(void)
     s_codec_dev = esp_codec_dev_new(&dev_cfg);
     if (s_codec_dev == NULL) {
         ESP_LOGE(TAG, "esp_codec_dev_new failed");
-        return;
+        return ESP_ERR_NO_MEM;
     }
 
-    /* 8. Open codec with sample config (16kHz mono 16-bit) */
+    /* 8. Open codec with sample config (24 kHz mono 16-bit) */
     esp_codec_dev_sample_info_t fs = {
-        .sample_rate     = OAI_SAMPLE_RATE,
+        .sample_rate     = AUDIO_CODEC_SAMPLE_RATE,
         .channel         = 1,
         .bits_per_sample = 16,
     };
     int rc = esp_codec_dev_open(s_codec_dev, &fs);
     if (rc != ESP_CODEC_DEV_OK) {
         ESP_LOGE(TAG, "esp_codec_dev_open failed: %d", rc);
-        return;
+        return ESP_FAIL;
     }
 
     /* 9. Output volume (0..100) and microphone gain (dB) */
     esp_codec_dev_set_out_vol(s_codec_dev, 60);
     esp_codec_dev_set_in_gain(s_codec_dev, 30.0);
 
-    ESP_LOGI(TAG, "audio codec ready (sample_rate=%d, 1ch, 16bit)", OAI_SAMPLE_RATE);
+    ESP_LOGI(TAG, "audio codec ready (sample_rate=%d, 1ch, 16bit)",
+             AUDIO_CODEC_SAMPLE_RATE);
+    return ESP_OK;
 }
 
 int oai_audio_read(void *data, int len)
