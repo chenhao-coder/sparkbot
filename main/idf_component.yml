@@ -15,3 +15,5 @@ dependencies:
   #   # All dependencies of `main` are public by default.
   #   public: true
   espressif/esp_lvgl_adapter: ^0.6.4
+  espressif/esp_codec_dev: ^1.6.2
+  78/esp-opus: ^1.0.5

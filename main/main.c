@@ -3,6 +3,9 @@
 #include "esp_log.h"
 #include "nvs_flash.h"
 #include "ui.h"
+#include "audio.h"
+#include "opus_audio.h"
+#include "yay_wav.h"
 
 static const char *TAG = "MAIN";
 
@@ -21,4 +24,10 @@ void app_main(void)
     ESP_ERROR_CHECK(esp_event_loop_create_default());
 
     app_ui_start();
+
+    oai_init_audio_capture();
+    oai_init_audio_decoder();
+
+    /* 临时测试: 播放 yay.wav 验证喇叭通路 */
+    oai_play_test_audio();
 }
