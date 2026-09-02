@@ -2,17 +2,20 @@
 #include "esp_log.h"
 #include "esp_lcd_panel_vendor.h"   // esp_lcd_new_panel_st7789 + esp_lcd_panel_dev_config_t
 #include "esp_lcd_io_spi.h"         // esp_lcd_new_panel_io_spi + esp_lcd_panel_io_spi_config_t
+#include "driver/gpio.h"
 #include "driver/spi_master.h"
-#include "driver/ledc.h"
 
 static const char *TAG = "DISPLAY";
 
-/* 引脚定义 (与之前验证通过的接线一致) */
+/* 为相机腾出 GPIO8 和 GPIO6。
+ * 保留已验证的 LCD DC 接线，CS 迁移到空闲 GPIO14，
+ * RST 迁移到空闲 GPIO2，保留该外接 LCD 模块所需的硬件复位；
+ * 避开可能仍与 USB-UART 芯片电气相连的 GPIO43/GPIO44。 */
 #define PIN_SCLK  GPIO_NUM_21 // SCL - 时钟
 #define PIN_MOSI  GPIO_NUM_47 // SDA - 数据
 #define PIN_DC    GPIO_NUM_38 // DC  - 数据/命令选择
-#define PIN_CS    GPIO_NUM_8  // CS  - 片选
-#define PIN_RST   GPIO_NUM_6  // RES - 硬件复位
+#define PIN_CS    GPIO_NUM_14 // CS  - 片选
+#define PIN_RST   GPIO_NUM_2  // RES - 硬件复位
 #define PIN_BLK   GPIO_NUM_46 // BLK - 背光
 
 #define LCD_PIXEL_CLOCK (20 * 1000 * 1000)  // 20MHz
@@ -83,26 +86,20 @@ esp_err_t display_init(esp_lcd_panel_handle_t *ret_panel,
     /* 6. 开显示 */
     esp_lcd_panel_disp_on_off(panel, true);
 
-    /* 7. 背光 PWM */
-    ledc_timer_config_t ledc_timer = {
-        .speed_mode      = LEDC_LOW_SPEED_MODE,
-        .duty_resolution = LEDC_TIMER_13_BIT,
-        .timer_num       = LEDC_TIMER_0,
-        .freq_hz         = 5000,
-        .clk_cfg         = LEDC_AUTO_CLK,
+    /* 7. 背光只需要开/关，直接使用 GPIO，完整保留 LEDC0 给相机 XCLK。 */
+    gpio_config_t backlight_cfg = {
+        .pin_bit_mask = 1ULL << PIN_BLK,
+        .mode = GPIO_MODE_OUTPUT,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,
     };
-    ledc_timer_config(&ledc_timer);
-
-    ledc_channel_config_t ledc_channel = {
-        .gpio_num   = PIN_BLK,
-        .speed_mode = LEDC_LOW_SPEED_MODE,
-        .channel    = LEDC_CHANNEL_0,
-        .timer_sel  = LEDC_TIMER_0,
-        .duty       = 0,
-        .hpoint     = 0,
-    };
-    ledc_channel_config(&ledc_channel);
-    display_backlight_set(8191);  // 100% 亮度
+    ret = gpio_config(&backlight_cfg);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "背光 GPIO 初始化失败: %d", ret);
+        return ret;
+    }
+    display_backlight_set(8191);  // 打开背光
 
     *ret_panel = panel;
     *ret_io    = io;
@@ -113,9 +110,5 @@ esp_err_t display_init(esp_lcd_panel_handle_t *ret_panel,
 
 void display_backlight_set(uint32_t duty)
 {
-    if (duty > 8191) {
-        duty = 8191;
-    }
-    ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, duty);
-    ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0);
+    gpio_set_level(PIN_BLK, duty > 0 ? 1 : 0);
 }

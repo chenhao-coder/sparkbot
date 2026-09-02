@@ -5,7 +5,25 @@ idf_component_register(
         "bsp_display.c"
         "ui.c"
         "audio.c"
+        "camera.c"
         "doubao_realtime.c"
         "main.c"
     INCLUDE_DIRS "."
+    PRIV_REQUIRES
+        esp_common
+        esp_driver_gpio
+        esp_driver_i2c
+        esp_driver_i2s
+        esp_driver_pcnt
+        esp_driver_spi
+        esp_event
+        esp_hw_support
+        esp_lcd
+        esp_netif
+        esp_wifi
+        freertos
+        heap
+        log
+        mbedtls
+        nvs_flash
 )

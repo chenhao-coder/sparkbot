@@ -457,6 +457,19 @@ static void websocket_event_handler(void *handler_args, esp_event_base_t event_b
     }
 }
 
+/**
+ * @brief 将24kHz音频降采样为16kHz，采用简单的3:2比例转换
+ *
+ * 此函数每处理3个输入样本生成2个输出样本，实现24kHz到16kHz的采样率转换。
+ * 第一个输出样本直接取自第一个输入样本，第二个输出样本取剩余两个输入样本的平均值。
+ *
+ * @note 此为低复杂度、低质量的降采样实现，未使用抗混叠滤波器，可能会引入混叠失真
+ *
+ * @param input  输入缓冲区指针，包含24kHz 16位PCM音频数据
+ *               至少需要有 CODEC_FRAME_SAMPLES 个样本
+ * @param output 输出缓冲区指针，用于存放16kHz 16位PCM音频数据
+ *               输出缓冲区大小应为 (CODEC_FRAME_SAMPLES * 2 / 3) 个样本
+ */
 static void downsample_24k_to_16k(const int16_t *input, int16_t *output) {
     size_t output_index = 0;
     for (size_t input_index = 0; input_index + 2 < CODEC_FRAME_SAMPLES; input_index += 3) {

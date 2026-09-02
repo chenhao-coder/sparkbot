@@ -24,8 +24,8 @@ esp_err_t display_init(esp_lcd_panel_handle_t *ret_panel,
                        esp_lcd_panel_io_handle_t *ret_io);
 
 /**
- * @brief 设置背光亮度
- * @param duty 占空比 0~8191 (13位, 0最暗, 8191最亮)
+ * @brief 设置背光开关
+ * @param duty 0 关闭背光，非 0 打开背光（保留原接口以兼容现有调用）
  */
 void display_backlight_set(uint32_t duty);
 

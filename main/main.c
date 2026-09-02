@@ -2,6 +2,7 @@
 #include <stdio.h>
 
 #include "audio.h"
+#include "camera.h"
 #include "doubao_realtime.h"
 #include "esp_log.h"
 #include "nvs_flash.h"
@@ -24,11 +25,27 @@ void app_main(void) {
 
     app_ui_start();
 
+    /* Keep the ATK-OV2640 quiet while ES8311 is configured on shared I2C0. */
+    ret = sparkbot_camera_hold_reset();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "摄像头复位引脚初始化失败: %s", esp_err_to_name(ret));
+        return;
+    }
+
     ret = oai_init_audio_capture();
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "音频初始化失败，停止启动实时语音: %s", esp_err_to_name(ret));
         return;
     }
+
+    ret = sparkbot_camera_init();
+    if (ret == ESP_OK) {
+        ret = sparkbot_camera_capture_probe();
+    }
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "摄像头探测失败: %s", esp_err_to_name(ret));
+    }
+
     oai_wifi();
 
     ret = doubao_realtime_start();
