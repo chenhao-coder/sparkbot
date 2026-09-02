@@ -23,7 +23,11 @@ void app_main(void) {
 
     ESP_ERROR_CHECK(esp_event_loop_create_default());
 
-    app_ui_start();
+    ret = app_ui_start();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "UI initialization failed: %s", esp_err_to_name(ret));
+        return;
+    }
 
     /* Keep the ATK-OV2640 quiet while ES8311 is configured on shared I2C0. */
     ret = sparkbot_camera_hold_reset();
@@ -42,8 +46,11 @@ void app_main(void) {
     if (ret == ESP_OK) {
         ret = sparkbot_camera_capture_probe();
     }
+    if (ret == ESP_OK) {
+        ret = sparkbot_camera_start_preview();
+    }
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "摄像头探测失败: %s", esp_err_to_name(ret));
+        ESP_LOGE(TAG, "摄像头探测/预览启动失败: %s", esp_err_to_name(ret));
     }
 
     oai_wifi();

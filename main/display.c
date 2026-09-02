@@ -80,6 +80,15 @@ esp_err_t display_init(esp_lcd_panel_handle_t *ret_panel,
     esp_lcd_panel_reset(panel);
     esp_lcd_panel_init(panel);
 
+    /* This 1.3-inch ST7789 panel uses the inverted drive polarity. Without
+     * INVON, commanded black appears white/gray and the whole image is color
+     * inverted. This matches the original SparkBot BSP initialization. */
+    ret = esp_lcd_panel_invert_color(panel, true);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "LCD 颜色反相配置失败: %d", ret);
+        return ret;
+    }
+
     /* 5. 240x240 可见区在 240x320 RAM 中的偏移 */
     esp_lcd_panel_set_gap(panel, 0, LCD_Y_GAP);
 

@@ -15,6 +15,9 @@ esp_err_t sparkbot_camera_hold_reset(void);
 /** Capture and validate one RGB565 240x240 frame. */
 esp_err_t sparkbot_camera_capture_probe(void);
 
+/** Start the continuous camera-to-LCD preview task. */
+esp_err_t sparkbot_camera_start_preview(void);
+
 #ifdef __cplusplus
 }
 #endif

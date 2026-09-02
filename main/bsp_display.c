@@ -30,8 +30,8 @@ esp_err_t bsp_display_start_with_config(const bsp_display_cfg_t *cfg)
 
     /*
      * 3. 注册显示 (对应 lvgl_port_add_disp)。
-     *    注: 工程未启用 PSRAM (CONFIG_SPIRAM 未开), 因此固定用无 PSRAM 的小块缓冲,
-     *    忽略 cfg->flags.buff_spiram。若日后开启 PSRAM 可换成 *_WITH_PSRAM_* 配置。
+     *    SPI DMA draw buffers remain in internal RAM. Camera preview pixels use
+     *    a separate PSRAM buffer and are rendered into these 10-line buffers.
      */
     esp_lv_adapter_display_config_t disp_cfg =
         ESP_LV_ADAPTER_DISPLAY_SPI_WITHOUT_PSRAM_DEFAULT_CONFIG(

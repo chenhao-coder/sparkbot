@@ -10,6 +10,7 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "ui.h"
 
 static const char *TAG = "CAMERA";
 
@@ -37,8 +38,80 @@ static const char *TAG = "CAMERA";
 
 #define CAMERA_INIT_MAX_ATTEMPTS   3
 #define CAMERA_I2C_RETRY_DELAY_MS 100
+#define CAMERA_PREVIEW_TASK_STACK  (4 * 1024)
+#define CAMERA_PREVIEW_TASK_PRIO   4
+#define CAMERA_PREVIEW_LOG_FRAMES  50U
 
 static bool s_camera_initialized;
+static TaskHandle_t s_camera_preview_task;
+
+static bool camera_frame_metadata_valid(const camera_fb_t *frame)
+{
+    return frame != NULL &&
+           frame->width == 240 &&
+           frame->height == 240 &&
+           frame->format == PIXFORMAT_RGB565 &&
+           frame->len == 240U * 240U * 2U;
+}
+
+static void camera_preview_task(void *arg)
+{
+    (void)arg;
+    uint32_t rendered_frames = 0;
+    uint32_t frames_since_log = 0;
+    TickType_t log_start_tick = xTaskGetTickCount();
+
+    ESP_LOGI(TAG, "continuous LCD preview task started");
+    for (;;) {
+        camera_fb_t *frame = esp_camera_fb_get();
+        if (frame == NULL) {
+            ESP_LOGE(TAG, "preview failed to acquire camera frame; retrying");
+            vTaskDelay(pdMS_TO_TICKS(100));
+            continue;
+        }
+
+        if (!camera_frame_metadata_valid(frame)) {
+            ESP_LOGE(TAG,
+                     "preview received unexpected frame: %ux%u, len=%u, format=%d",
+                     (unsigned int)frame->width,
+                     (unsigned int)frame->height,
+                     (unsigned int)frame->len,
+                     (int)frame->format);
+            esp_camera_fb_return(frame);
+            vTaskDelay(pdMS_TO_TICKS(100));
+            continue;
+        }
+
+        esp_err_t ret = app_ui_show_camera_frame(frame->buf, frame->len);
+        esp_camera_fb_return(frame);
+
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "failed to update LCD preview: %s", esp_err_to_name(ret));
+            vTaskDelay(pdMS_TO_TICKS(100));
+            continue;
+        }
+
+        ++rendered_frames;
+        ++frames_since_log;
+        if (rendered_frames == 1) {
+            ESP_LOGI(TAG, "LCD preview active: %" PRIu32 " frames", rendered_frames);
+            frames_since_log = 0;
+            log_start_tick = xTaskGetTickCount();
+        } else if (frames_since_log >= CAMERA_PREVIEW_LOG_FRAMES) {
+            const TickType_t now = xTaskGetTickCount();
+            const uint32_t elapsed_ms =
+                (uint32_t)(((uint64_t)(now - log_start_tick) * 1000U) / configTICK_RATE_HZ);
+            const uint32_t fps_x10 = elapsed_ms > 0
+                                         ? (frames_since_log * 10000U) / elapsed_ms
+                                         : 0;
+            ESP_LOGI(TAG,
+                     "LCD preview active: %" PRIu32 " frames, %" PRIu32 ".%" PRIu32 " fps",
+                     rendered_frames, fps_x10 / 10U, fps_x10 % 10U);
+            frames_since_log = 0;
+            log_start_tick = now;
+        }
+    }
+}
 
 static void recover_camera_i2c_bus(int next_attempt)
 {
@@ -346,10 +419,7 @@ esp_err_t sparkbot_camera_capture_probe(void)
         checksum *= UINT32_C(16777619);
     }
 
-    const bool valid = frame->width == 240 &&
-                       frame->height == 240 &&
-                       frame->format == PIXFORMAT_RGB565 &&
-                       frame->len == 240U * 240U * 2U;
+    const bool valid = camera_frame_metadata_valid(frame);
 
     ESP_LOGI(TAG,
              "frame: %ux%u, len=%u, format=%d, checksum=0x%08" PRIx32,
@@ -370,5 +440,29 @@ esp_err_t sparkbot_camera_capture_probe(void)
     }
 
     ESP_LOGI(TAG, "camera capture probe passed");
+    return ESP_OK;
+}
+
+esp_err_t sparkbot_camera_start_preview(void)
+{
+    if (!s_camera_initialized) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    if (s_camera_preview_task != NULL) {
+        return ESP_OK;
+    }
+
+    BaseType_t task_ret = xTaskCreate(camera_preview_task,
+                                     "camera_preview",
+                                     CAMERA_PREVIEW_TASK_STACK,
+                                     NULL,
+                                     CAMERA_PREVIEW_TASK_PRIO,
+                                     &s_camera_preview_task);
+    if (task_ret != pdPASS) {
+        s_camera_preview_task = NULL;
+        ESP_LOGE(TAG, "failed to create continuous LCD preview task");
+        return ESP_ERR_NO_MEM;
+    }
+
     return ESP_OK;
 }
