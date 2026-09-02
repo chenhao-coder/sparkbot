@@ -3,6 +3,7 @@
 #include <inttypes.h>
 
 #include "driver/gpio.h"
+#include "driver/i2c_master.h"
 #include "driver/i2c_types.h"
 #include "driver/pulse_cnt.h"
 #include "esp_camera.h"
@@ -34,7 +35,34 @@ static const char *TAG = "CAMERA";
 #define OV2640_CLK_DIV_MASK       0x3F
 #define OV2640_CLK_DIV_SLOW       7
 
+#define CAMERA_INIT_MAX_ATTEMPTS   3
+#define CAMERA_I2C_RETRY_DELAY_MS 100
+
 static bool s_camera_initialized;
+
+static void recover_camera_i2c_bus(int next_attempt)
+{
+    /* Hold the sensor quiet while the shared I2C0 controller clears the bus. */
+    esp_err_t reset_pin_ret = gpio_set_level(CAMERA_PIN_RESET, 0);
+
+    i2c_master_bus_handle_t bus_handle = NULL;
+    esp_err_t ret = i2c_master_get_bus_handle(I2C_NUM_0, &bus_handle);
+    if (ret == ESP_OK) {
+        ret = i2c_master_bus_reset(bus_handle);
+    }
+
+    if (reset_pin_ret == ESP_OK && ret == ESP_OK) {
+        ESP_LOGW(TAG,
+                 "camera init failed; sensor reset and I2C bus recovered, retrying (%d/%d)",
+                 next_attempt, CAMERA_INIT_MAX_ATTEMPTS);
+    } else {
+        ESP_LOGW(TAG,
+                 "camera init failed; recovery incomplete (reset=%s, i2c=%s), retrying (%d/%d)",
+                 esp_err_to_name(reset_pin_ret), esp_err_to_name(ret),
+                 next_attempt, CAMERA_INIT_MAX_ATTEMPTS);
+    }
+    vTaskDelay(pdMS_TO_TICKS(CAMERA_I2C_RETRY_DELAY_MS));
+}
 
 static void camera_log_parallel_signal_edges(void)
 {
@@ -216,9 +244,26 @@ esp_err_t sparkbot_camera_init(void)
     };
 
     ESP_LOGI(TAG, "initializing ATK-OV2640 (RGB565 240x240, onboard XCLK 12 MHz)");
-    esp_err_t ret = esp_camera_init(&config);
+    esp_err_t ret = ESP_FAIL;
+    for (int attempt = 1; attempt <= CAMERA_INIT_MAX_ATTEMPTS; ++attempt) {
+        ret = esp_camera_init(&config);
+        if (ret == ESP_OK) {
+            if (attempt > 1) {
+                ESP_LOGI(TAG, "camera initialized on attempt %d/%d",
+                         attempt, CAMERA_INIT_MAX_ATTEMPTS);
+            }
+            break;
+        }
+        ESP_LOGW(TAG, "esp_camera_init attempt %d/%d failed: %s (0x%x)",
+                 attempt, CAMERA_INIT_MAX_ATTEMPTS,
+                 esp_err_to_name(ret), (unsigned int)ret);
+        if (attempt < CAMERA_INIT_MAX_ATTEMPTS) {
+            recover_camera_i2c_bus(attempt + 1);
+        }
+    }
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "esp_camera_init failed: %s (0x%x)",
+        ESP_LOGE(TAG, "esp_camera_init failed after %d attempts: %s (0x%x)",
+                 CAMERA_INIT_MAX_ATTEMPTS,
                  esp_err_to_name(ret), (unsigned int)ret);
         return ret;
     }

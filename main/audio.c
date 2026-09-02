@@ -23,6 +23,8 @@
 #include "driver/i2s_std.h"
 #include "esp_codec_dev.h"
 #include "esp_codec_dev_defaults.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "audio.h"
 
 static const char *TAG = "AUDIO";
@@ -34,6 +36,9 @@ static const char *TAG = "AUDIO";
 #define I2C_SDA_PIN      4
 #define I2C_SCL_PIN      5
 
+#define AUDIO_I2C_MAX_ATTEMPTS   3
+#define AUDIO_I2C_RETRY_DELAY_MS 100
+
 #define MCLK_PIN         45
 #define BCLK_PIN         39
 #define WS_PIN           41
@@ -44,6 +49,22 @@ static esp_codec_dev_handle_t  s_codec_dev = NULL;
 static i2c_master_bus_handle_t s_i2c_bus   = NULL;
 static i2s_chan_handle_t       s_tx_chan   = NULL;
 static i2s_chan_handle_t       s_rx_chan   = NULL;
+
+static void recover_audio_i2c_bus(const char *stage, int next_attempt)
+{
+    esp_err_t ret = i2c_master_bus_reset(s_i2c_bus);
+    if (ret == ESP_OK) {
+        ESP_LOGW(TAG,
+                 "%s failed; I2C bus reset, retrying (%d/%d)",
+                 stage, next_attempt, AUDIO_I2C_MAX_ATTEMPTS);
+    } else {
+        ESP_LOGW(TAG,
+                 "%s failed; I2C bus reset also failed: %s, retrying (%d/%d)",
+                 stage, esp_err_to_name(ret),
+                 next_attempt, AUDIO_I2C_MAX_ATTEMPTS);
+    }
+    vTaskDelay(pdMS_TO_TICKS(AUDIO_I2C_RETRY_DELAY_MS));
+}
 
 static esp_err_t detect_es8311(uint8_t *codec_addr)
 {
@@ -88,9 +109,15 @@ esp_err_t oai_init_audio_capture(void)
         ESP_LOGE(TAG, "i2c_new_master_bus failed: %s", esp_err_to_name(ret));
         return ret;
     }
-    ret = detect_es8311(&codec_i2c_addr);
-    if (ret != ESP_OK) {
-        return ret;
+    for (int attempt = 1; attempt <= AUDIO_I2C_MAX_ATTEMPTS; ++attempt) {
+        ret = detect_es8311(&codec_i2c_addr);
+        if (ret == ESP_OK) {
+            break;
+        }
+        if (attempt == AUDIO_I2C_MAX_ATTEMPTS) {
+            return ret;
+        }
+        recover_audio_i2c_bus("ES8311 probe", attempt + 1);
     }
 
     /* 2. I2S channel (TX playback + RX capture), ESP32 as master */
@@ -190,9 +217,19 @@ esp_err_t oai_init_audio_capture(void)
         },
         .mclk_div    = 256,
     };
-    const audio_codec_if_t *codec_if = es8311_codec_new(&es8311_cfg);
+    const audio_codec_if_t *codec_if = NULL;
+    for (int attempt = 1; attempt <= AUDIO_I2C_MAX_ATTEMPTS; ++attempt) {
+        codec_if = es8311_codec_new(&es8311_cfg);
+        if (codec_if != NULL) {
+            break;
+        }
+        if (attempt < AUDIO_I2C_MAX_ATTEMPTS) {
+            recover_audio_i2c_bus("ES8311 register initialization", attempt + 1);
+        }
+    }
     if (codec_if == NULL) {
-        ESP_LOGE(TAG, "es8311_codec_new failed");
+        ESP_LOGE(TAG, "es8311_codec_new failed after %d attempts",
+                 AUDIO_I2C_MAX_ATTEMPTS);
         return ESP_FAIL;
     }
 
@@ -214,9 +251,20 @@ esp_err_t oai_init_audio_capture(void)
         .channel         = 1,
         .bits_per_sample = 16,
     };
-    int rc = esp_codec_dev_open(s_codec_dev, &fs);
+    int rc = ESP_CODEC_DEV_DRV_ERR;
+    for (int attempt = 1; attempt <= AUDIO_I2C_MAX_ATTEMPTS; ++attempt) {
+        rc = esp_codec_dev_open(s_codec_dev, &fs);
+        if (rc == ESP_CODEC_DEV_OK) {
+            break;
+        }
+        esp_codec_dev_close(s_codec_dev);
+        if (attempt < AUDIO_I2C_MAX_ATTEMPTS) {
+            recover_audio_i2c_bus("ES8311 codec open", attempt + 1);
+        }
+    }
     if (rc != ESP_CODEC_DEV_OK) {
-        ESP_LOGE(TAG, "esp_codec_dev_open failed: %d", rc);
+        ESP_LOGE(TAG, "esp_codec_dev_open failed after %d attempts: %d",
+                 AUDIO_I2C_MAX_ATTEMPTS, rc);
         return ESP_FAIL;
     }
 
