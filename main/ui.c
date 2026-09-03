@@ -15,6 +15,7 @@ static const char *TAG = "UI";
 #define CAMERA_PREVIEW_PIXEL_BYTES 2U
 #define CAMERA_PREVIEW_BUFFER_SIZE \
     (CAMERA_PREVIEW_WIDTH * CAMERA_PREVIEW_HEIGHT * CAMERA_PREVIEW_PIXEL_BYTES)
+#define LCD_DRAW_BUFFER_LINES      80U
 
 static uint8_t *s_camera_preview_buffer;
 static lv_obj_t *s_camera_preview_image;
@@ -47,7 +48,7 @@ esp_err_t app_ui_start(void)
     bsp_display_cfg_t custom_cfg = {
         .lvgl_port_cfg = ESP_LVGL_PORT_INIT_CONFIG(),
         .buffer_size   = BSP_LCD_H_RES * BSP_LCD_V_RES,
-        .trans_size    = BSP_LCD_H_RES * 10,  // in SRAM, DMA-capable
+        .trans_size    = BSP_LCD_H_RES * LCD_DRAW_BUFFER_LINES,
         .double_buffer = 0,
         .flags = {
             .buff_dma    = false,

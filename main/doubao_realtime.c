@@ -53,6 +53,7 @@ static const char *TAG = "DOUBAO";
     (AUDIO_CODEC_SAMPLE_RATE * sizeof(int16_t) * DOUBAO_FRAME_MS / 1000)
 #define DOUBAO_SEND_TIMEOUT_MS 2000
 #define DOUBAO_SESSION_TIMEOUT_MS 10000
+#define DOUBAO_TASK_CORE 0
 
 #define DOUBAO_CONNECTED_BIT BIT0
 #define DOUBAO_SESSION_SENT_BIT BIT1
@@ -481,6 +482,8 @@ static void downsample_24k_to_16k(const int16_t *input, int16_t *output) {
 
 static void doubao_uplink_task(void *argument) {
     (void)argument;
+
+    ESP_LOGI(TAG, "microphone uplink task started on CPU%d", xPortGetCoreID());
     int16_t capture[CODEC_FRAME_SAMPLES];
     int16_t resampled[DOUBAO_INPUT_FRAME_SAMPLES];
     unsigned char base64_audio[DOUBAO_INPUT_BASE64_SIZE];
@@ -552,6 +555,8 @@ static void doubao_playback_task(void *argument) {
     (void)argument;
     playback_chunk_t chunk;
 
+    ESP_LOGI(TAG, "speaker playback task started on CPU%d", xPortGetCoreID());
+
     while (true) {
         if (xQueueReceive(s_playback_queue, &chunk, portMAX_DELAY) != pdTRUE) {
             continue;
@@ -596,6 +601,8 @@ esp_err_t doubao_realtime_start(void) {
         .task_name = "doubao_ws",
         .task_stack = 8192,
         .task_prio = 6,
+        .task_core_id_set = true,
+        .task_core_id = DOUBAO_TASK_CORE,
         .buffer_size = DOUBAO_WS_BUFFER_SIZE,
         .crt_bundle_attach = esp_crt_bundle_attach,
         .ping_interval_sec = 10,
@@ -618,9 +625,10 @@ esp_err_t doubao_realtime_start(void) {
         return error;
     }
 
-    if (xTaskCreate(doubao_playback_task, "doubao_play", 4096, NULL, 6, &s_playback_task) !=
-            pdPASS ||
-        xTaskCreate(doubao_uplink_task, "doubao_uplink", 8192, NULL, 6, &s_uplink_task) != pdPASS) {
+    if (xTaskCreatePinnedToCore(doubao_playback_task, "doubao_play", 4096, NULL, 6,
+                                &s_playback_task, DOUBAO_TASK_CORE) != pdPASS ||
+        xTaskCreatePinnedToCore(doubao_uplink_task, "doubao_uplink", 8192, NULL, 6,
+                                &s_uplink_task, DOUBAO_TASK_CORE) != pdPASS) {
         ESP_LOGE(TAG, "failed to create Doubao audio tasks");
         doubao_realtime_stop();
         return ESP_ERR_NO_MEM;

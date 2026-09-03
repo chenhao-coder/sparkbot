@@ -9,6 +9,13 @@ CONFIG_MBEDTLS_X509_CREATE_C=y
 CONFIG_WS_BUFFER_SIZE=8192
 CONFIG_WS_DYNAMIC_BUFFER=y
 
+# Leave enough CPU headroom for concurrent camera preview and realtime audio.
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
+
+# Keep camera DMA/event handling away from Wi-Fi and realtime audio on CPU0.
+CONFIG_CAMERA_CORE1=y
+CONFIG_CAMERA_PSRAM_DMA=y
+
 # This board exposes UART0 through its CH343 USB-UART bridge (COM12).
 CONFIG_ESP_CONSOLE_UART_DEFAULT=y
 CONFIG_ESP_CONSOLE_SECONDARY_NONE=y

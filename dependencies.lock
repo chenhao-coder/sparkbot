@@ -43,6 +43,44 @@ dependencies:
       registry_url: https://components.espressif.com
       type: service
     version: 0.5.3
+  espressif/dl_fft:
+    component_hash: a955ca29581de2177ddf25759273bd83f082b3c805e735fe6ee105858643989b
+    dependencies:
+    - name: idf
+      require: private
+      version: '>=5.0'
+    source:
+      registry_url: https://components.espressif.com
+      type: service
+    version: 0.6.0
+  espressif/esp-dl:
+    component_hash: 233ee8d37dfedeb637fc74713b87bd861ac530cfbcc4c63c57c2e51064cdda31
+    dependencies:
+    - name: espressif/dl_fft
+      registry_url: https://components.espressif.com
+      require: private
+      version: '>=0.6.0'
+    - name: espressif/esp_new_jpeg
+      registry_url: https://components.espressif.com
+      require: private
+      version: ^1
+    - name: idf
+      require: private
+      version: '*'
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    targets:
+    - esp32
+    - esp32c2
+    - esp32c3
+    - esp32c5
+    - esp32c6
+    - esp32p4
+    - esp32s2
+    - esp32s3
+    - esp32s31
+    version: 3.3.11
   espressif/esp32-camera:
     component_hash: bc9c8a6b51df777a014fa295825b3de5069bc0300c317acff20c97cf4a10ac7d
     dependencies:
@@ -304,12 +342,13 @@ dependencies:
 direct_dependencies:
 - 78/esp-opus
 - espressif/cjson
+- espressif/esp-dl
 - espressif/esp32-camera
 - espressif/esp_codec_dev
 - espressif/esp_lvgl_adapter
 - espressif/esp_peer
 - espressif/esp_websocket_client
 - idf
-manifest_hash: 914495e37dc996c00c687fa9acb001b6fe9579a140984d5a109215c6e8a768f7
+manifest_hash: faaed5306401a8b0ff038c8c884d6b3090a7f53986125b93023a3f3657442f30
 target: esp32s3
 version: 3.0.0

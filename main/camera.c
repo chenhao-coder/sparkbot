@@ -8,6 +8,7 @@
 #include "driver/pulse_cnt.h"
 #include "esp_camera.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "ui.h"
@@ -40,6 +41,7 @@ static const char *TAG = "CAMERA";
 #define CAMERA_I2C_RETRY_DELAY_MS 100
 #define CAMERA_PREVIEW_TASK_STACK  (4 * 1024)
 #define CAMERA_PREVIEW_TASK_PRIO   4
+#define CAMERA_PREVIEW_TASK_CORE   1
 #define CAMERA_PREVIEW_LOG_FRAMES  50U
 
 static bool s_camera_initialized;
@@ -59,11 +61,16 @@ static void camera_preview_task(void *arg)
     (void)arg;
     uint32_t rendered_frames = 0;
     uint32_t frames_since_log = 0;
+    uint64_t acquire_time_us = 0;
+    uint64_t ui_time_us = 0;
     TickType_t log_start_tick = xTaskGetTickCount();
 
-    ESP_LOGI(TAG, "continuous LCD preview task started");
+    ESP_LOGI(TAG, "continuous LCD preview task started on CPU%d", xPortGetCoreID());
     for (;;) {
+        const int64_t acquire_start_us = esp_timer_get_time();
         camera_fb_t *frame = esp_camera_fb_get();
+        const uint64_t acquire_elapsed_us =
+            (uint64_t)(esp_timer_get_time() - acquire_start_us);
         if (frame == NULL) {
             ESP_LOGE(TAG, "preview failed to acquire camera frame; retrying");
             vTaskDelay(pdMS_TO_TICKS(100));
@@ -82,7 +89,9 @@ static void camera_preview_task(void *arg)
             continue;
         }
 
+        const int64_t ui_start_us = esp_timer_get_time();
         esp_err_t ret = app_ui_show_camera_frame(frame->buf, frame->len);
+        const uint64_t ui_elapsed_us = (uint64_t)(esp_timer_get_time() - ui_start_us);
         esp_camera_fb_return(frame);
 
         if (ret != ESP_OK) {
@@ -93,9 +102,13 @@ static void camera_preview_task(void *arg)
 
         ++rendered_frames;
         ++frames_since_log;
+        acquire_time_us += acquire_elapsed_us;
+        ui_time_us += ui_elapsed_us;
         if (rendered_frames == 1) {
             ESP_LOGI(TAG, "LCD preview active: %" PRIu32 " frames", rendered_frames);
             frames_since_log = 0;
+            acquire_time_us = 0;
+            ui_time_us = 0;
             log_start_tick = xTaskGetTickCount();
         } else if (frames_since_log >= CAMERA_PREVIEW_LOG_FRAMES) {
             const TickType_t now = xTaskGetTickCount();
@@ -104,10 +117,16 @@ static void camera_preview_task(void *arg)
             const uint32_t fps_x10 = elapsed_ms > 0
                                          ? (frames_since_log * 10000U) / elapsed_ms
                                          : 0;
+            const uint64_t average_acquire_us = acquire_time_us / frames_since_log;
+            const uint64_t average_ui_us = ui_time_us / frames_since_log;
             ESP_LOGI(TAG,
-                     "LCD preview active: %" PRIu32 " frames, %" PRIu32 ".%" PRIu32 " fps",
-                     rendered_frames, fps_x10 / 10U, fps_x10 % 10U);
+                     "LCD preview active: %" PRIu32 " frames, %" PRIu32 ".%" PRIu32
+                     " fps, avg acquire=%" PRIu64 " us, UI=%" PRIu64 " us",
+                     rendered_frames, fps_x10 / 10U, fps_x10 % 10U,
+                     average_acquire_us, average_ui_us);
             frames_since_log = 0;
+            acquire_time_us = 0;
+            ui_time_us = 0;
             log_start_tick = now;
         }
     }
@@ -309,7 +328,7 @@ esp_err_t sparkbot_camera_init(void)
         .pixel_format = PIXFORMAT_RGB565,
         .frame_size = FRAMESIZE_240X240,
         .jpeg_quality = 12,
-        /* RGB565 uses single-buffer capture; continuous multi-buffer mode is intended for JPEG. */
+        /* Single-buffer mode is more reliable for raw RGB565 while Wi-Fi is active. */
         .fb_count = 1,
         .fb_location = CAMERA_FB_IN_PSRAM,
         .grab_mode = CAMERA_GRAB_WHEN_EMPTY,
@@ -452,12 +471,13 @@ esp_err_t sparkbot_camera_start_preview(void)
         return ESP_OK;
     }
 
-    BaseType_t task_ret = xTaskCreate(camera_preview_task,
-                                     "camera_preview",
-                                     CAMERA_PREVIEW_TASK_STACK,
-                                     NULL,
-                                     CAMERA_PREVIEW_TASK_PRIO,
-                                     &s_camera_preview_task);
+    BaseType_t task_ret = xTaskCreatePinnedToCore(camera_preview_task,
+                                                 "camera_preview",
+                                                 CAMERA_PREVIEW_TASK_STACK,
+                                                 NULL,
+                                                 CAMERA_PREVIEW_TASK_PRIO,
+                                                 &s_camera_preview_task,
+                                                 CAMERA_PREVIEW_TASK_CORE);
     if (task_ret != pdPASS) {
         s_camera_preview_task = NULL;
         ESP_LOGE(TAG, "failed to create continuous LCD preview task");

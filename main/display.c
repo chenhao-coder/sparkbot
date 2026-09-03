@@ -18,7 +18,7 @@ static const char *TAG = "DISPLAY";
 #define PIN_RST   GPIO_NUM_2  // RES - 硬件复位
 #define PIN_BLK   GPIO_NUM_46 // BLK - 背光
 
-#define LCD_PIXEL_CLOCK (20 * 1000 * 1000)  // 20MHz
+#define LCD_PIXEL_CLOCK (80 * 1000 * 1000)  // Match the original YOLO demo LCD SPI clock
 
 /* 1.3寸 ST7789: 控制器 RAM 为 240x320, 可见区 240x240 只是其中一个 240 行的窗口。
  * 本模组的可见窗口位于 RAM 第 0~239 行, 所以偏移 0。

@@ -1,4 +1,7 @@
 #include "bsp_display.h"
+
+#include <inttypes.h>
+
 #include "display.h"
 #include "esp_lv_adapter.h"
 #include "esp_log.h"
@@ -31,11 +34,20 @@ esp_err_t bsp_display_start_with_config(const bsp_display_cfg_t *cfg)
     /*
      * 3. 注册显示 (对应 lvgl_port_add_disp)。
      *    SPI DMA draw buffers remain in internal RAM. Camera preview pixels use
-     *    a separate PSRAM buffer and are rendered into these 10-line buffers.
+     *    a separate PSRAM buffer and are rendered into configurable line blocks.
      */
     esp_lv_adapter_display_config_t disp_cfg =
         ESP_LV_ADAPTER_DISPLAY_SPI_WITHOUT_PSRAM_DEFAULT_CONFIG(
             s_panel, io, BSP_LCD_H_RES, BSP_LCD_V_RES, ESP_LV_ADAPTER_ROTATE_0);
+
+    uint32_t draw_buffer_lines = cfg->trans_size / BSP_LCD_H_RES;
+    if (draw_buffer_lines == 0) {
+        draw_buffer_lines = 1;
+    } else if (draw_buffer_lines > BSP_LCD_V_RES) {
+        draw_buffer_lines = BSP_LCD_V_RES;
+    }
+    disp_cfg.profile.buffer_height = (uint16_t)draw_buffer_lines;
+
     lv_display_t *disp = esp_lv_adapter_register_display(&disp_cfg);
     if (disp == NULL) {
         ESP_LOGE(TAG, "注册显示失败");
@@ -49,7 +61,9 @@ esp_err_t bsp_display_start_with_config(const bsp_display_cfg_t *cfg)
         return ret;
     }
 
-    ESP_LOGI(TAG, "显示初始化完成");
+    ESP_LOGI(TAG, "显示初始化完成，LVGL DMA 绘制缓冲=%" PRIu32 " 行 (%" PRIu32 " bytes)",
+             draw_buffer_lines,
+             draw_buffer_lines * BSP_LCD_H_RES * (uint32_t)sizeof(uint16_t));
     return ESP_OK;
 }
 
